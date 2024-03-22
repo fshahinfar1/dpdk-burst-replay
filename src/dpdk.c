@@ -182,7 +182,7 @@ int dpdk_init_rx_queues(struct cpus_bindings* cpus, int port) {
     for (int q = 0; q < NB_RX_QUEUES; q++) {
         struct rte_eth_rxconf rxq_conf;
 
-        cpus->q[port][q].rx_mp = dpdk_mbuf_pool_create("Default RX", port, q, 8192, 
+        cpus->q[port][q].rx_mp = dpdk_mbuf_pool_create("Default RX", port, q, 8192,
                                     cpus->numacore, MEMPOOL_CACHE_SIZE);
         if (cpus->q[port][q].rx_mp == NULL) {
             log_error("Cannot init mbuf pool (port %u)", port);
@@ -267,7 +267,7 @@ int dpdk_init_port(struct cpus_bindings* cpus, int port, unsigned int num_tx_que
                eth_link.link_speed,
                (eth_link.link_duplex == RTE_ETH_LINK_FULL_DUPLEX) ?
                "full-duplex" : "half-duplex");
-    #else 
+    #else
         log_info(" Link up - speed %u Mbps - %s",
                eth_link.link_speed,
                (eth_link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
@@ -423,8 +423,23 @@ int init_dpdk_eal_mempool(const struct cmd_opts* opts,
         }
     }
 
-    
+
     return (0);
+}
+
+static int _check_numa_node(int port, struct cpus_bindings *cpus)
+{
+    /* if the port ID isn't on the good numacore, exit */
+    int numa = rte_eth_dev_socket_id(port);
+    if (numa != cpus->numacore) {
+        if (numa != -1) {
+            log_error("port %i is not on the good numa id (%i).", port, numa);
+            return (1);
+        } else {
+            /* the numa node was not determined ! */
+        }
+    }
+    return 0;
 }
 
 int init_dpdk_ports(struct cpus_bindings* cpus, const struct cmd_opts* opts, unsigned int needed_cpus)
@@ -442,12 +457,8 @@ int init_dpdk_ports(struct cpus_bindings* cpus, const struct cmd_opts* opts, uns
     }
 
     for (i = 0; (unsigned)i < needed_cpus; i++) {
-        /* if the port ID isn't on the good numacore, exit */
-        numa = rte_eth_dev_socket_id(i);
-        if (numa != cpus->numacore) {
-            log_error("port %i is not on the good numa id (%i).", i, numa);
+        if (_check_numa_node(i, cpus))
             return (1);
-        }
         /* init ports */
         if (dpdk_init_port(cpus, i, num_tx_queues))
             return (1);
@@ -456,12 +467,8 @@ int init_dpdk_ports(struct cpus_bindings* cpus, const struct cmd_opts* opts, uns
 
     // Now if I have a device to read packets from I need to setup the corresponding port
     for (i = needed_cpus; (unsigned)i < (opts->nb_total_ports); i++) {
-        /* if the port ID isn't on the good numacore, exit */
-        numa = rte_eth_dev_socket_id(i);
-        if (numa != cpus->numacore) {
-            log_error("port %i is not on the good numa id (%i).", i, numa);
+        if (_check_numa_node(i, cpus))
             return (1);
-        }
         /* init ports */
         if (dpdk_init_read_port(cpus, i))
             return (1);
@@ -508,7 +515,7 @@ uint64_t get_tx_cycles_mpps(const struct cmd_opts* opts) {
 
 uint64_t get_tx_cycles_mbps(const struct pcap_ctx* pcap_cfgs, const struct cmd_opts* opts) {
     uint64_t wire_size = (pcap_cfgs->avg_pkt_sz + PKT_OVERHEAD_SIZE) * 8;
-    
+
     double link_bps       = opts->max_mbps * Million;
     uint64_t id_cycles = (wire_size / link_bps) * rte_get_timer_hz();
     uint64_t tx_cycles = (id_cycles * BURST_SZ);
@@ -700,26 +707,26 @@ int remote_thread(void* thread_ctx)
             log_info("-> Stats for port: %u\n", ctx->rx_port_id);
             gbps =  (double)(rx_bit_delta)/Billion;
             // Print stats with 2 decimal places
-            log_info("  RX-packets: %-10"PRIu64"  RX-bytes:  %-10"PRIu64"  RX-Gbps: %.2f", 
+            log_info("  RX-packets: %-10"PRIu64"  RX-bytes:  %-10"PRIu64"  RX-Gbps: %.2f",
                     rx_pkt_rate,
                     rx_bytes_rate,
                     gbps);
             gbps =  (double)(tx_bit_delta)/Billion;
-            log_info("  TX-packets: %-10"PRIu64"  TX-bytes:  %-10"PRIu64"  TX-Gbps: %.2f", 
-                    tx_pkt_rate, 
+            log_info("  TX-packets: %-10"PRIu64"  TX-bytes:  %-10"PRIu64"  TX-Gbps: %.2f",
+                    tx_pkt_rate,
                     tx_bytes_rate,
                     gbps);
             log_info("\n");
 
             memcpy(&old_stats, &stats, sizeof(stats));
             if (ctx->csv_ptr) {
-                fprintf(ctx->csv_ptr, "%u,%u,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", 
+                fprintf(ctx->csv_ptr, "%u,%u,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n",
                                       ctx->rx_port_id, run_cpt,
                                       rx_pkt_rate, rx_bytes_rate,
                                       tx_pkt_rate, tx_bytes_rate);
             }
             sleep(1);
-            
+
             sem_getvalue(ctx->sem_stop, &sem_value);
             if (sem_value > 0) {
                 break;

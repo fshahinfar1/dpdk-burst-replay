@@ -21,3 +21,4 @@ src/dpdk-replay
 compile_commands.json
 src/*.csv
 build
+tags
